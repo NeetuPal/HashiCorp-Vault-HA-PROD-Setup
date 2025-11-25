@@ -1,0 +1,33 @@
+server:
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      config: |
+        ui = true
+
+        listener "tcp" {
+          address       = "0.0.0.0:8200"
+          cluster_address = "0.0.0.0:8201"
+          tls_disable   = 1
+        }
+
+        storage "raft" {
+          path = "/vault/data"
+        }
+
+        service_registration "kubernetes" {}
+
+  # Use emptyDir so pods can start without PVCs
+  dataStorage:
+    enabled: true
+    size: 1Gi          # required, but ignored by emptyDir
+    storageClass: ""   # leave blank
+    type: emptyDir     # important!
+
+injector:
+  enabled: true
+
+ui:
+  enabled: true
