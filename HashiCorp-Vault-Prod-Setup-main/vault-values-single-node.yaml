@@ -1,0 +1,34 @@
+server:
+  ha:
+    enabled: false           # disable HA for single-node
+    replicas: 1              # only 1 Vault pod
+
+  raft:
+    enabled: false           # disable Raft because HA is off
+
+  # Minimal Vault server config for single-node
+  config: |
+    ui = true
+
+    listener "tcp" {
+      address          = "0.0.0.0:8200"
+      cluster_address  = "0.0.0.0:8201"
+      tls_disable      = 1
+    }
+
+    storage "file" {
+      path = "/vault/data"
+    }
+
+  # Use emptyDir to avoid PVCs
+  dataStorage:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    type: emptyDir
+
+injector:
+  enabled: true
+
+ui:
+  enabled: true
