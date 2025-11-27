@@ -29,21 +29,17 @@ spec:
         app: mysql
       annotations:
         vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/role: "vault-role"
-
-        # Inject MySQL root password
-        vault.hashicorp.com/agent-inject-secret-mysql_root_password: "secret/mysql"
-        vault.hashicorp.com/agent-inject-template-mysql_root_password: |
+        vault.hashicorp.com/agent-inject-secret-MYSQL_ROOT_PASSWORD: "secret/mysql"
+        vault.hashicorp.com/agent-inject-template-MYSQL_ROOT_PASSWORD: |
           {{- with secret "secret/mysql" -}}
           export MYSQL_ROOT_PASSWORD="{{ .Data.data.MYSQL_ROOT_PASSWORD }}"
           {{- end }}
-
-        # Inject MySQL database name
-        vault.hashicorp.com/agent-inject-secret-mysql_database: "secret/mysql"
-        vault.hashicorp.com/agent-inject-template-mysql_database: |
+        vault.hashicorp.com/agent-inject-secret-MYSQL_DATABASE: "secret/mysql"
+        vault.hashicorp.com/agent-inject-template-MYSQL_DATABASE: |
           {{- with secret "secret/mysql" -}}
           export MYSQL_DATABASE="{{ .Data.data.MYSQL_DATABASE }}"
           {{- end }}
+        vault.hashicorp.com/role: "vault-role"
     spec:
       serviceAccountName: vault-auth
       containers:
@@ -52,18 +48,10 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - |
-            while [ ! -s /vault/secrets/mysql_root_password ]; do
-              echo 'Waiting for Vault secrets...';
-              sleep 2;
-            done
-            while [ ! -s /vault/secrets/mysql_database ]; do
-              echo 'Waiting for Vault secrets...';
-              sleep 2;
-            done
-
-            source /vault/secrets/mysql_root_password
-            source /vault/secrets/mysql_database
-
+            while [ ! -s /vault/secrets/MYSQL_ROOT_PASSWORD ]; do echo 'Waiting for Vault...'; sleep 2; done;
+            while [ ! -s /vault/secrets/MYSQL_DATABASE ]; do echo 'Waiting for Vault...'; sleep 2; done;
+            source /vault/secrets/MYSQL_ROOT_PASSWORD;
+            source /vault/secrets/MYSQL_DATABASE;
             exec docker-entrypoint.sh mysqld
         ports:
         - containerPort: 3306
@@ -104,8 +92,6 @@ spec:
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "vault-role"
-
-        # Inject bankapp config
         vault.hashicorp.com/agent-inject-secret-config.txt: "secret/bankapp/config"
         vault.hashicorp.com/agent-inject-template-config.txt: |
           {{- with secret "secret/bankapp/config" -}}
@@ -122,15 +108,14 @@ spec:
         - name: bankapp
           image: neet95402927/bankapp1:v161
           command: ["/bin/sh", "-c"]
-          args: |
-            while [ ! -s /vault/secrets/config.txt ]; do
-              echo 'Waiting for Vault secrets...';
-              sleep 2;
-            done
-
-            . /vault/secrets/config.txt
-
-            exec java -jar /app/bankapp.jar
+          args:
+            - |
+              while [ ! -s /vault/secrets/config.txt ]; do
+                echo 'Waiting for Vault secrets...';
+                sleep 2;
+              done;
+              source /vault/secrets/config.txt;
+              exec java -jar /app/bankapp.jar
           ports:
             - containerPort: 8080
 ---
