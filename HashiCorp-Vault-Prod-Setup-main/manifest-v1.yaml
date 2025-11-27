@@ -11,6 +11,15 @@ spec:
     requests:
       storage: 5Gi
   storageClassName: standard
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-auth
+  namespace: webapps
+automountServiceAccountToken: true
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -29,39 +38,47 @@ spec:
         app: mysql
       annotations:
         vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/agent-inject-secret-MYSQL_ROOT_PASSWORD: "secret/mysql"
-        vault.hashicorp.com/agent-inject-template-MYSQL_ROOT_PASSWORD: |
-          {{- with secret "secret/mysql" -}}
-          export MYSQL_ROOT_PASSWORD="{{ .Data.data.MYSQL_ROOT_PASSWORD }}"
-          {{- end }}
-        vault.hashicorp.com/agent-inject-secret-MYSQL_DATABASE: "secret/mysql"
-        vault.hashicorp.com/agent-inject-template-MYSQL_DATABASE: |
-          {{- with secret "secret/mysql" -}}
-          export MYSQL_DATABASE="{{ .Data.data.MYSQL_DATABASE }}"
-          {{- end }}
         vault.hashicorp.com/role: "vault-role"
+
+        # KV2 SECRET PATHS
+        vault.hashicorp.com/agent-inject-secret-MYSQL_ROOT_PASSWORD: "secret/data/mysql"
+        vault.hashicorp.com/agent-inject-template-MYSQL_ROOT_PASSWORD: |
+          {{- with secret "secret/data/mysql" -}}
+          MYSQL_ROOT_PASSWORD="{{ .Data.data.MYSQL_ROOT_PASSWORD }}"
+          {{- end }}
+
+        vault.hashicorp.com/agent-inject-secret-MYSQL_DATABASE: "secret/data/mysql"
+        vault.hashicorp.com/agent-inject-template-MYSQL_DATABASE: |
+          {{- with secret "secret/data/mysql" -}}
+          MYSQL_DATABASE="{{ .Data.data.MYSQL_DATABASE }}"
+          {{- end }}
+
     spec:
       serviceAccountName: vault-auth
       containers:
       - name: mysql
         image: mysql:8
         command: ["/bin/sh", "-c"]
-        args:
-          - |
-            while [ ! -s /vault/secrets/MYSQL_ROOT_PASSWORD ]; do echo 'Waiting for Vault...'; sleep 2; done;
-            while [ ! -s /vault/secrets/MYSQL_DATABASE ]; do echo 'Waiting for Vault...'; sleep 2; done;
-            source /vault/secrets/MYSQL_ROOT_PASSWORD;
-            source /vault/secrets/MYSQL_DATABASE;
-            exec docker-entrypoint.sh mysqld
+        args: |
+          echo "Waiting for Vault…";
+          while [ ! -s /vault/secrets/MYSQL_ROOT_PASSWORD ]; do sleep 2; done;
+          while [ ! -s /vault/secrets/MYSQL_DATABASE ]; do sleep 2; done;
+
+          export $(cat /vault/secrets/MYSQL_ROOT_PASSWORD | xargs)
+          export $(cat /vault/secrets/MYSQL_DATABASE | xargs)
+
+          exec docker-entrypoint.sh mysqld
         ports:
         - containerPort: 3306
         volumeMounts:
         - mountPath: /var/lib/mysql
           name: mysql-data
+
       volumes:
       - name: mysql-data
         persistentVolumeClaim:
           claimName: mysql-pvc
+
 ---
 apiVersion: v1
 kind: Service
@@ -74,6 +91,7 @@ spec:
       targetPort: 3306
   selector:
     app: mysql
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -92,32 +110,34 @@ spec:
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "vault-role"
-        vault.hashicorp.com/agent-inject-secret-config.txt: "secret/bankapp/config"
+
+        vault.hashicorp.com/agent-inject-secret-config.txt: "secret/data/bankapp/config"
         vault.hashicorp.com/agent-inject-template-config.txt: |
-          {{- with secret "secret/bankapp/config" -}}
-          MYSQL_USERNAME={{ .Data.data.username }}
-          MYSQL_PASSWORD={{ .Data.data.password }}
-          MYSQL_DATABASE={{ .Data.data.database }}
-          MYSQL_HOST=mysql-service
-          MYSQL_PORT=3306
+          {{- with secret "secret/data/bankapp/config" -}}
+          MYSQL_USERNAME="{{ .Data.data.username }}"
+          MYSQL_PASSWORD="{{ .Data.data.password }}"
+          MYSQL_DATABASE="{{ .Data.data.database }}"
+          MYSQL_HOST="mysql-service"
+          MYSQL_PORT="3306"
           {{- end }}
+
     spec:
       serviceAccountName: vault-auth
-      automountServiceAccountToken: true
       containers:
-        - name: bankapp
-          image: neet95402927/bankapp1:v161
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              while [ ! -s /vault/secrets/config.txt ]; do
-                echo 'Waiting for Vault secrets...';
-                sleep 2;
-              done;
-              source /vault/secrets/config.txt;
-              exec java -jar /app/bankapp.jar
-          ports:
-            - containerPort: 8080
+      - name: bankapp
+        image: neet95402927/bankapp1:v161
+        command: ["/bin/sh", "-c"]
+        args: |
+          echo "Waiting for Vault secrets…"
+          while [ ! -s /vault/secrets/config.txt ]; do sleep 2; done;
+
+          export $(cat /vault/secrets/config.txt | xargs)
+
+          exec java -jar /app/bankapp.jar
+
+        ports:
+        - containerPort: 8080
+
 ---
 apiVersion: v1
 kind: Service
