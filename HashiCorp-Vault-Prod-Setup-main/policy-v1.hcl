@@ -1,23 +1,12 @@
-path "secret/data/mysql" {
-  capabilities = ["read", "list"]
+# Read/write MySQL and Frontend secrets
+path "secret/data/mysql" {  
+  capabilities = ["create", "update", "read", "delete", "list"]
 }
 
 path "secret/data/frontend" {
-  capabilities = ["read", "list"]
+  capabilities = ["create", "update", "read", "delete", "list"]
 }
 
-path "secret/data/bankapp/config" {
-  capabilities = ["read", "list"]
-}
-
-path "secret/metadata/mysql" {
-  capabilities = ["list"]
-}
-
-path "secret/metadata/frontend" {
-  capabilities = ["list"]
-}
-
-path "secret/metadata/bankapp" {
-  capabilities = ["list"]
-}
+# List metadata
+path "secret/metadata/mysql" { capabilities = ["list"] }
+path "secret/metadata/frontend" { capabilities = ["list"] }
