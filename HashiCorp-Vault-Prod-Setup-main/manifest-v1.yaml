@@ -4,13 +4,13 @@
 # metadata:
 #   name: webapps
 ---
-# ServiceAccount for Vault auth
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: vault-auth
-  namespace: webapps
-automountServiceAccountToken: true
+# # ServiceAccount for Vault auth
+# apiVersion: v1
+# kind: ServiceAccount
+# metadata:
+#   name: vault-auth
+#   namespace: webapps
+# automountServiceAccountToken: true
 ---
 # PVC for MySQL
 apiVersion: v1
