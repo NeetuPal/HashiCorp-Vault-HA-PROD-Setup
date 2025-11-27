@@ -3,8 +3,4 @@ kind: ServiceAccount
 metadata:
   name: vault-auth
   namespace: webapps
-automountServiceAccountToken: true  
-secrets:
-  - name: vault-auth-token
-
-  
+automountServiceAccountToken: true
