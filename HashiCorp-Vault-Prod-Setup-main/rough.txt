@@ -1,0 +1,18 @@
+KUBE_CA_CERT=$(kubectl get secret vault-auth-token -n webapps -o jsonpath="{.data['ca\.crt']}" | base64 --decode)
+echo "$KUBE_CA_CERT"
+
+
+KUBE_HOST=$(kubectl config view --raw -o=jsonpath='{.clusters[0].cluster.server}')
+
+TOKEN_REVIEW_JWT=$(kubectl get secret vault-auth-token -n webapps -o jsonpath="{.data.token}" | base64 --decode)
+echo $TOKEN_REVIEW_JWT
+
+kubectl create secret generic vault-auth-token \
+  --namespace webapps \
+  --type kubernetes.io/service-account-token \
+  --from-literal=extra=unused \
+  --dry-run=client -o yaml | \
+  sed 's/^metadata:/metadata:\n  annotations:\n    kubernetes.io\/service-account.name: "vault-auth"/' | \
+  kubectl apply -f -
+
+
