@@ -1,0 +1,168 @@
+invalid audience (aud) claim: audience claim does not match any expected audience
+
+
+vault write auth/kubernetes/config \
+  token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+  kubernetes_host="https://10.96.0.1:443" \
+  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+  disable_local_ca_jwt="true" \
+  issuer="https://kubernetes.default.svc.cluster.local"
+
+
+vault write auth/kubernetes/role/vault-role \
+  bound_service_account_names="vault-auth" \
+  bound_service_account_namespaces="webapps" \
+  policies="myapp-policy" \
+  ttl="24h" \
+  audience="https://kubernetes.default.svc.cluster.local"
+
+
+---
+# PVC for MySQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: webapps
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+# MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: webapps
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "vault-role"
+        vault.hashicorp.com/auth-type: "kubernetes"
+        vault.hashicorp.com/auth-kubernetes-audience: "vault"
+
+        vault.hashicorp.com/agent-inject-secret-MYSQL_ROOT_PASSWORD: "secret/data/mysql"
+        vault.hashicorp.com/agent-inject-template-MYSQL_ROOT_PASSWORD: |
+          {{- with secret "secret/data/mysql" -}}
+          MYSQL_ROOT_PASSWORD="{{ .Data.data.MYSQL_ROOT_PASSWORD }}"
+          {{- end }}
+        vault.hashicorp.com/agent-inject-secret-MYSQL_DATABASE: "secret/data/mysql"
+        vault.hashicorp.com/agent-inject-template-MYSQL_DATABASE: |
+          {{- with secret "secret/data/mysql" -}}
+          MYSQL_DATABASE="{{ .Data.data.MYSQL_DATABASE }}"
+          {{- end }}
+    spec:
+      serviceAccountName: vault-auth
+      containers:
+      - name: mysql
+        image: mysql:8
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Waiting for Vault secrets..."
+            while [ ! -s /vault/secrets/MYSQL_ROOT_PASSWORD ]; do sleep 2; done
+            while [ ! -s /vault/secrets/MYSQL_DATABASE ]; do sleep 2; done
+            source /vault/secrets/MYSQL_ROOT_PASSWORD
+            source /vault/secrets/MYSQL_DATABASE
+            export MYSQL_ROOT_PASSWORD MYSQL_DATABASE
+            echo "Loaded secrets: DB=$MYSQL_DATABASE"
+            exec docker-entrypoint.sh mysqld
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-data
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+# MySQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: webapps
+spec:
+  ports:
+  - port: 3306
+    targetPort: 3306
+  selector:
+    app: mysql
+---
+# BankApp Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bankapp
+  namespace: webapps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bankapp
+  template:
+    metadata:
+      labels:
+        app: bankapp
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "vault-role"
+        vault.hashicorp.com/auth-type: "kubernetes"
+        vault.hashicorp.com/auth-kubernetes-audience: "vault"
+
+        vault.hashicorp.com/agent-inject-secret-SPRING_DATASOURCE_PASSWORD: "secret/data/frontend"
+        vault.hashicorp.com/agent-inject-template-SPRING_DATASOURCE_PASSWORD: |
+          {{- with secret "secret/data/frontend" -}}
+          SPRING_DATASOURCE_PASSWORD="{{ .Data.data.SPRING_DATASOURCE_PASSWORD }}"
+          {{- end }}
+    spec:
+      serviceAccountName: vault-auth
+      containers:
+      - name: bankapp
+        image: neet95402927/bankapp1:v161
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Waiting for Vault secret..."
+            while [ ! -s /vault/secrets/SPRING_DATASOURCE_PASSWORD ]; do sleep 2; done
+            source /vault/secrets/SPRING_DATASOURCE_PASSWORD
+            export SPRING_DATASOURCE_PASSWORD
+            echo "Starting BankApp..."
+            exec java -jar app.jar
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:mysql://mysql-service:3306/bankappdb?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: "root"
+
+---
+# BankApp Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bankapp-service
+  namespace: webapps
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: bankapp
