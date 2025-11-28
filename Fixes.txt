@@ -1,5 +1,9 @@
 invalid audience (aud) claim: audience claim does not match any expected audience
 
+Getting webhook config from cache failed: err="mutatingwebhookconfiguration.admissionregistration.k8s.io \"vault-agent-injector-cfg\" not found"
+Fetching webhook config directly failed; will try again
+
+
 
 apiVersion: v1
 kind: ServiceAccount
