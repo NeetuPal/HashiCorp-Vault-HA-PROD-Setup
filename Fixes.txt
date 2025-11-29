@@ -3,6 +3,16 @@ invalid audience (aud) claim: audience claim does not match any expected audienc
 Getting webhook config from cache failed: err="mutatingwebhookconfiguration.admissionregistration.k8s.io \"vault-agent-injector-cfg\" not found"
 Fetching webhook config directly failed; will try again
 
+2025-11-28 19:12:49+00:00 [ERROR] [Entrypoint]: Database is uninitialized and password option is not specified
+    You need to specify one of the following as an environment variable:
+    - MYSQL_ROOT_PASSWORD
+    - MYSQL_ALLOW_EMPTY_PASSWORD
+    - MYSQL_RANDOM_ROOT_PASSWORD
+
+Caused by: com.mysql.cj.exceptions.CJCommunicationsException: Communications link failure
+
+Caused by: java.net.ConnectException: Connection refused
+
 
 
 apiVersion: v1
