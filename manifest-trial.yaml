@@ -1,0 +1,190 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: webapps
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: webapps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "vault-role"
+        vault.hashicorp.com/auth-type: "kubernetes"
+        vault.hashicorp.com/auth-kubernetes-audience: "https://kubernetes.default.svc.cluster.local"
+        vault.hashicorp.com/agent-inject-vault-addr: "http://vault.vault.svc.cluster.local:8200"
+        vault.hashicorp.com/tls-skip-verify: "true"
+        vault.hashicorp.com/agent-inject-secret-mysql: "secret/data/mysql"
+        vault.hashicorp.com/agent-inject-template-mysql: |
+          {{- with secret "secret/data/mysql" -}}
+          MYSQL_ROOT_PASSWORD={{ .Data.data.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE={{ .Data.data.MYSQL_DATABASE }}
+          {{- end }}
+    spec:
+      serviceAccountName: vault-auth
+      securityContext:
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: mysql
+        image: mysql:8
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add:
+              - IPC_LOCK
+        ports:
+        - containerPort: 3306
+          name: mysql
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            until [ -s /vault/secrets/MYSQL_ROOT_PASSWORD ] && [ -s /vault/secrets/MYSQL_DATABASE ]; do
+              sleep 1
+            done
+            export MYSQL_ROOT_PASSWORD=$(cat /vault/secrets/MYSQL_ROOT_PASSWORD | tr -d '\n\r\"')
+            export MYSQL_DATABASE=$(cat /vault/secrets/MYSQL_DATABASE | tr -d '\n\r\"')
+            exec docker-entrypoint.sh mysqld
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+        readinessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "mysqladmin ping -h 127.0.0.1 --silent || exit 1"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: webapps
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bankapp
+  namespace: webapps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bankapp
+  template:
+    metadata:
+      labels:
+        app: bankapp
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "vault-role"
+        vault.hashicorp.com/auth-type: "kubernetes"
+        vault.hashicorp.com/auth-kubernetes-audience: "https://kubernetes.default.svc.cluster.local"
+        vault.hashicorp.com/agent-inject-vault-addr: "http://vault.vault.svc.cluster.local:8200"
+        vault.hashicorp.com/tls-skip-verify: "true"
+        vault.hashicorp.com/agent-inject-secret-frontend: "secret/data/frontend"
+        vault.hashicorp.com/agent-inject-template-frontend: |
+          {{- with secret "secret/data/frontend" -}}
+          SPRING_DATASOURCE_PASSWORD={{ .Data.data.SPRING_DATASOURCE_PASSWORD }}
+          {{- end }}
+    spec:
+      serviceAccountName: vault-auth
+      securityContext:
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+      - name: wait-for-mysql
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command:
+          - sh
+          - -c
+          - |
+            until nc -z mysql-service 3306; do
+              sleep 2
+            done
+      containers:
+      - name: bankapp
+        image: neet95402927/bankapp1:v161
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add:
+              - IPC_LOCK
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:mysql://mysql-service:3306/bankappdb?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+        - name: SPRING_DATASOURCE_USERNAME
+          value: "root"
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            until [ -s /vault/secrets/SPRING_DATASOURCE_PASSWORD ]; do
+              sleep 1
+            done
+            export SPRING_DATASOURCE_PASSWORD=$(cat /vault/secrets/SPRING_DATASOURCE_PASSWORD | tr -d '\n\r\"')
+            exec java -jar /usr/src/app/app.jar
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bankapp-service
+  namespace: webapps
+spec:
+  type: LoadBalancer
+  selector:
+    app: bankapp
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
