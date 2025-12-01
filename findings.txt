@@ -1,0 +1,5 @@
+---------
+Method	What happens
+Sparse checkout	Downloads your folder + ALL root files
+Sparse checkout + commit checkout	Can bring back other folders
+SVN export	Downloads ONLY the subfolder (cleanest method)
