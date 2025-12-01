@@ -3,3 +3,23 @@ Method	What happens
 Sparse checkout	Downloads your folder + ALL root files
 Sparse checkout + commit checkout	Can bring back other folders
 SVN export	Downloads ONLY the subfolder (cleanest method)
+
+
+----------
+Correct way: Check default branch via GitHub API
+
+To find the default branch:
+
+Run this:
+
+curl -s https://api.github.com/repos/NeetuPal/HashiCorp-Vault-HA-PROD-Setup | grep default_branch
+
+
+You will get:
+
+"default_branch": "main"
+
+
+(or whatever your repo uses)
+--------------
+
