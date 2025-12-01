@@ -19,7 +19,13 @@ token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token \
     kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
     issuer="https://oidc.eks.<region>.amazonaws.com/id/<eks-cluster-id>"
 
+The token_reviewer_jwt comes from Vault pod's service account in the vault namespace.
 
+It is not from your app namespace.
+
+This is why Vault can validate tokens from any namespace, as long as the Vault role allows it.
+
+The issuer is the OIDC issuer for your EKS cluster, which is required for EKS 1.24+ (service account tokens are JWTs signed by the OIDC provider).
 
 invalid audience (aud) claim: audience claim does not match any expected audience
 
