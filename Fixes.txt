@@ -1,3 +1,26 @@
+
+
+timeout while waiting for state to become 'ACTIVE' (last state: 'DEGRADED', timeout: 20m0s)
+
+From Kubernetes 1.24+, service accounts no longer auto-create tokens.
+
+
+In Kubernetes 1.24+, CA cert is not stored inside a Secret anymore.
+
+
+kubectl create token vault-auth -n webapps
+
+
+Code: 403
+Errors:
+* permission denied
+token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token \
+    kubernetes_host=https://$KUBERNETES_PORT_443_TCP_ADDR:443 \
+    kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+    issuer="https://oidc.eks.<region>.amazonaws.com/id/<eks-cluster-id>"
+
+
+
 invalid audience (aud) claim: audience claim does not match any expected audience
 
 Getting webhook config from cache failed: err="mutatingwebhookconfiguration.admissionregistration.k8s.io \"vault-agent-injector-cfg\" not found"
